@@ -17,7 +17,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_lines=True)
 
-DB_URI = "postgresql://postgres.tfhhjmpejmanlukduolk:HGM22WT9PswlU3QF@aws-0-eu-west-1.pooler.supabase.com:6543/postgres"
+DB_URI = st.secrets["DB_URI"]
 
 # 🎛️ PANEL LATERAL: Configuración Matinal Manual
 st.sidebar.markdown("## ⚙️ Niveles del Día")
