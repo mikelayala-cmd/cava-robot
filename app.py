@@ -14,8 +14,8 @@ st.markdown("""
         .metric-card { background: #141722; border: 1px solid #1f232d; padding: 20px; border-radius: 12px; text-align: left; }
         .metric-title { color: #7f8c8d; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
         .metric-value { font-size: 24px; font-weight: 600; color: #ffffff; }
-    </style>
-""", unsafe_allow_lines=True)
+</style>
+""", unsafe_allow_html=True) # <-- Cambia "lines" por "html" aquí
 
 DB_URI = st.secrets["DB_URI"]
 
