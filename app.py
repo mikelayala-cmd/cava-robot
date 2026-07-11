@@ -23,25 +23,24 @@ st.markdown("""
 @st.cache_data(ttl=86400) # Se descarga solo una vez al día para ir a máxima velocidad
 def cargar_universo_acciones():
     try:
-        # S&P 500 desde Wikipedia
         sp500 = pd.read_html('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies')[0]['Symbol'].tolist()
-        # Nasdaq 100 desde Wikipedia
         nasdaq100 = pd.read_html('https://en.wikipedia.org/wiki/Nasdaq-100')[4]['Ticker'].tolist()
-        
-        # Combinamos y limpiamos duplicados
         universo = sorted(list(set(sp500 + nasdaq100)))
         return universo
     except:
-        # Lista de respaldo si falla Wikipedia
         return ["AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "AMD", "NFLX", "DELL", "DDOG"]
 
 universo_tickers = cargar_universo_acciones()
+
+# 🧠 MEMORIA DE LA WEB: Inicializar almacenamiento de estado de niveles para evitar pérdidas al refrescar
+if "valores_tickers" not in st.session_state:
+    st.session_state.valores_tickers = {}
 
 # ─── CREACIÓN DE LAS PESTAÑAS DE LA MISMA APP ───
 tab_indice, tab_acciones = st.tabs(["📊 Monitor Índice S&P 500", "🔍 Escáner de Acciones"])
 
 # =====================================================================
-# PESTAÑA 1: EL MONITOR DE ÍNDICE (Tu código original intacto)
+# PESTAÑA 1: EL MONITOR DE ÍNDICE
 # =====================================================================
 with tab_indice:
     st.sidebar.markdown("## ⚙️ Niveles del Índice")
@@ -53,7 +52,6 @@ with tab_indice:
 
     st.subheader("Análisis Microestructural del S&P 500")
     
-    # Captura en vivo del índice
     spx = yf.Ticker("^SPX")
     df_hoy = spx.history(period="1d", interval="1m")
     df_hist = spx.history(period="22d", interval="1d")
@@ -91,45 +89,56 @@ with tab_indice:
         col3.markdown(f'<div class="metric-card"><div class="metric-title">Call Wall</div><div class="metric-value" style="color:#2ecc71;">{call_wall:.2f}</div></div>', unsafe_allow_html=True)
 
 # =====================================================================
-# PESTAÑA 2: EL NUEVO ESCÁNER DE ACCIONES MULTI-ACTIVO
+# PESTAÑA 2: EL ESCÁNER DE ACCIONES MULTI-ACTIVO (CORREGIDA)
 # =====================================================================
 with tab_acciones:
     st.subheader("🔍 Escáner Táctico de Acciones (Manual de Cava)")
     st.markdown("Selecciona las compañías que quieres monitorizar e introduce sus soportes geométricos.")
 
-    # 1. Configurar la Selección (Watchlist)
     opciones_seleccionadas = st.multiselect(
-        "Añadir acciones a la mesa de operaciones (Escribe el ticker o búscalo en la lista):",
+        "Añadir acciones a la mesa de operaciones:",
         options=universo_tickers,
-        default=["AAPL", "NVDA", "GOOGL", "META"] # Semilla inicial por comodidad
+        default=["AAPL", "NVDA", "GOOGL", "META"]
     )
     
-    # Campo extra por si quiere escribir una de Russell 2000 que no esté en SP500/Nasdaq100
-    ticker_extra = st.text_input("¿Quieres añadir algún ticker extra de Russell 2000 manualmente? (Ej: IWM, PLTR, BILI):").upper()
+    ticker_extra = st.text_input("¿Quieres añadir algún ticker extra manualmente? (Ej: PLTR, DELL, DDOG):").upper()
     if ticker_extra and ticker_extra not in opciones_seleccionadas:
         opciones_seleccionadas.append(ticker_extra)
 
     if opciones_seleccionadas:
         st.markdown("### 📝 Matriz de Niveles Técnicos Diarios")
-        st.info("Introduce el Soporte crítico de Elliott y el Mínimo de la barrida para calcular los gatillos automáticos.")
+        st.info("💡 Haz doble clic sobre cualquier celda con 0.0 para cambiar el valor. Al terminar de escribir el número, presiona Enter para fijarlo en la memoria.")
         
-        # Creamos una tabla interactiva para que rellene los datos cómodamente sin tocar código
-        data_inicial = {
-            "Ticker": opciones_seleccionadas,
-            "Soporte Elliott": [0.0] * len(opciones_seleccionadas),
-            "Minimo Barrida (Stop)": [0.0] * len(opciones_seleccionadas)
-        }
-        df_niveles = pd.DataFrame(data_inicial)
+        # Sincronizar las opciones con la memoria para retener los datos introducidos previamente
+        for ticker in opciones_seleccionadas:
+            if ticker not in st.session_state.valores_tickers:
+                st.session_state.valores_tickers[ticker] = {"Soporte Elliott": 0.0, "Minimo Barrida (Stop)": 0.0}
         
-        # st.data_editor permite escribir dentro de las celdas directamente en la web
+        # Construir la cuadrícula leyendo directamente de la memoria de la sesión
+        filas = []
+        for ticker in opciones_seleccionadas:
+            filas.append({
+                "Ticker": ticker,
+                "Soporte Elliott": st.session_state.valores_tickers[ticker]["Soporte Elliott"],
+                "Minimo Barrida (Stop)": st.session_state.valores_tickers[ticker]["Minimo Barrida (Stop)"]
+            })
+        df_niveles = pd.DataFrame(filas)
+        
+        # Mostrar el editor de datos interactivo
         tabla_editada = st.data_editor(df_niveles, hide_index=True, use_container_width=True)
 
-        # 2. Botón de ejecución del escáner algorítmico
+        # 🔒 CLAVE DEL ARREGLO: Guardar de inmediato cualquier edición en la memoria del servidor
+        for index, row in tabla_editada.iterrows():
+            st.session_state.valores_tickers[row["Ticker"]] = {
+                "Soporte Elliott": float(row["Soporte Elliott"]),
+                "Minimo Barrida (Stop)": float(row["Minimo Barrida (Stop)"])
+            }
+
+        # Botón de ejecución del escáner
         if st.button("🚀 Lanzar Escáner de Mercado en Vivo"):
             st.markdown("---")
             st.markdown("### 🔔 Panel de Alertas y Señales Activas")
             
-            # Recorremos cada una de las acciones seleccionadas
             for index, row in tabla_editada.iterrows():
                 ticker = row["Ticker"]
                 soporte = row["Soporte Elliott"]
@@ -139,7 +148,6 @@ with tab_acciones:
                     st.warning(f"⚠️ Saltando {ticker}: Debes definir un nivel de Soporte técnico mayor que 0.")
                     continue
                 
-                # Descarga de datos express de internet
                 t_data = yf.Ticker(ticker)
                 h_hoy = t_data.history(period="1d", interval="1m")
                 h_hist = t_data.history(period="22d", interval="1d")
@@ -152,23 +160,20 @@ with tab_acciones:
                 vol_accion = int(h_hoy['Volume'].sum())
                 vol_medio_20_accion = int(h_hist['Volume'].iloc[-21:-1].mean())
                 
-                # EVALUACIÓN DE LAS REGLAS DEL ROBOT
-                volumen_institucional = vol_accion > (1.5 * vol_medio_20_accion) # Filtro Manos Fuertes
+                volumen_institucional = vol_accion > (1.5 * vol_medio_20_accion)
                 desviacion = (precio_accion - soporte) / soporte
-                holgura_correcta = 0.0 < desviacion <= 0.02 # Regla de entrada limpia (máx 2% arriba)
+                holgura_correcta = 0.0 < desviacion <= 0.02
                 
-                # Alerta 1: CUMPLE EL ALGORITMO COMPLETO (Trigger Activo)
                 if volumen_institucional and holgura_correcta and precio_accion > soporte:
                     st.markdown(f"""
                         <div class="alert-trigger">
                             <span style="font-size:16px; font-weight:bold; color:#2ecc71;">🚀 DISPARO EN {ticker}</span><br>
                             El precio actual (<b>{precio_accion:.2f}</b>) está en zona óptima de entrada sobre el soporte ({soporte:.2f}). <br>
                             🔥 <b>Volumen Institucional Confirmado:</b> {vol_accion:,} vs Media: {vol_medio_20_accion:,}.<br>
-                            🛑 <b>Nivel Stop-Loss Obligatorio:</b> {stop_ref - 0.2:.2f} (Mínimo barrida - holgura)
+                            🛑 <b>Nivel Stop-Loss Obligatorio:</b> {stop_ref - 0.2:.2f}
                         </div>
                     """, unsafe_allow_html=True)
                 
-                # Alerta 2: EN RADAR (Estructura buena pero falta el volumen de las manos fuertes)
                 elif precio_accion > soporte and desviacion <= 0.03:
                     st.markdown(f"""
                         <div class="alert-radar">
