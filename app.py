@@ -1,9 +1,10 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import numpy as np
 from datetime import datetime
 
-# Configuración premium de la página web
+# Configuración de alta gama para la plataforma visual
 st.set_page_config(page_title="Cava Algorithmic Core", layout="wide", initial_sidebar_state="expanded")
 
 # CSS Minimalista Premium
@@ -14,12 +15,12 @@ st.markdown("""
         .metric-card { background: #141722; border: 1px solid #1f232d; padding: 20px; border-radius: 12px; text-align: left; }
         .metric-title { color: #7f8c8d; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
         .metric-value { font-size: 24px; font-weight: 600; color: #ffffff; }
-        .alert-trigger { background: #1c2826; border-left: 4px solid #2ecc71; padding: 15px; border-radius: 4px; margin-bottom: 10px; }
-        .alert-radar { background: #1f1f2e; border-left: 4px solid #f1c40f; padding: 15px; border-radius: 4px; margin-bottom: 10px; }
+        .alert-trigger { background: #1c2826; border-left: 4px solid #2ecc71; padding: 15px; border-radius: 4px; margin-bottom: 12px; }
+        .alert-radar { background: #1f1f2e; border-left: 4px solid #f1c40f; padding: 15px; border-radius: 4px; margin-bottom: 12px; }
     </style>
 """, unsafe_allow_html=True)
 
-# ─── 📦 FUNCIÓN PARA CONFIGURAR EL UNIVERSO DE ACCIONES ───
+# ─── 📦 DESCARGA DEL UNIVERSO OFICIAL DE ACCIONES ───
 @st.cache_data(ttl=86400)
 def cargar_universo_acciones():
     try:
@@ -32,23 +33,18 @@ def cargar_universo_acciones():
 
 universo_tickers = cargar_universo_acciones()
 
-# 🧠 MEMORIA DE LA WEB
-if "valores_tickers" not in st.session_state:
-    st.session_state.valores_tickers = {}
-
-# ─── CREACIÓN DE LAS PESTAÑAS ───
-tab_indice, tab_acciones = st.tabs(["📊 Monitor Índice S&P 500", "🔍 Escáner de Acciones"])
+# Pestañas nativas de la aplicación
+tab_indice, tab_screener = st.tabs(["📊 Monitor Índice S&P 500", "🚦 Screener Autónomo Cava System"])
 
 # =====================================================================
-# PESTAÑA 1: EL MONITOR DE ÍNDICE
+# PESTAÑA 1: MONITOR DE ÍNDICE (Mapeo de Estructura de Opciones)
 # =====================================================================
 with tab_indice:
-    st.sidebar.markdown("## ⚙️ Niveles del Índice")
+    st.sidebar.markdown("## ⚙️ Parámetros del Índice")
     zero_gamma = st.sidebar.number_input("Nivel Zero Gamma", value=5120.0, step=5.0)
     put_wall = st.sidebar.number_input("Put Wall (Suelo Crítico)", value=5080.0, step=5.0)
     call_wall = st.sidebar.number_input("Call Wall (Techo)", value=5220.0, step=5.0)
-    soporte_elliott = st.sidebar.number_input("Soporte Técnico Elliott", value=5100.0, step=5.0)
-    minimo_barrida = st.sidebar.number_input("Mínimo de la Barrida (Stop)", value=5090.0, step=5.0)
+    soporte_elliott = st.sidebar.number_input("Soporte Geométrico Elliott", value=5100.0, step=5.0)
 
     st.subheader("Análisis Microestructural del S&P 500")
     
@@ -61,20 +57,12 @@ with tab_indice:
         volumen = int(df_hoy['Volume'].sum())
         vol_media_20 = int(df_hist['Volume'].iloc[-21:-1].mean())
         
-        gex_ratio = 0.65 if spot > zero_gamma else 0.32
-        filtro_volumen = volumen > (1.5 * vol_media_20)
-        desviacion_pct = (spot - soporte_elliott) / soporte_elliott
-        filtro_holgura = desviacion_pct <= 0.02
-        
-        if spot > zero_gamma and gex_ratio > 0.5:
-            color, status, msg = "#2ecc71", "🟢 POSICIÓN COMPLETA (100% Capital)", "Régimen de Gamma Positiva real. Dealers amortiguan volatilidad."
+        if spot > zero_gamma:
+            color, status, msg = "#2ecc71", "🟢 POSICIÓN COMPLETA (Régimen de Gamma Positiva)", "Dealers amortiguan la volatilidad. Buscar compras con confianza."
         elif spot > put_wall:
-            color, status, msg = "#f1c40f", "🟡 POSICIÓN MODERADA (50% - 75%)", "Gamma Negativa activa. Reducir Sizing por volatilidad."
+            color, status, msg = "#f1c40f", "🟡 POSICIÓN MODERADA (Régimen de Gamma Negativa)", "La volatilidad está activa. Reducir el tamaño de las posiciones a la mitad."
         else:
-            color, status, msg = "#e74c3c", "🔴 RIESGO EXTREMO", "Precio por debajo del Put Wall. Evitar compras."
-
-        if filtro_volumen and filtro_holgura and spot > soporte_elliott:
-            msg += f" | 🚀 ¡TRIGGER ACTIVO! Stop en: {minimo_barrida - 0.5:.2f}"
+            color, status, msg = "#e74c3c", "🔴 RIESGO EXTREMO (Por debajo del Put Wall)", "Pánico en el mercado. Evitar cualquier tipo de compra. Liquidez."
 
         st.markdown(f"""
             <div style="background: #141722; border-left: 4px solid {color}; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
@@ -89,102 +77,137 @@ with tab_indice:
         col3.markdown(f'<div class="metric-card"><div class="metric-title">Call Wall</div><div class="metric-value" style="color:#2ecc71;">{call_wall:.2f}</div></div>', unsafe_allow_html=True)
 
 # =====================================================================
-# PESTAÑA 2: ESCÁNER CON CÁLCULO ESTRUCTURAL AUTOMÁTICO
+# PESTAÑA 2: SCREENER AUTÓNOMO (Unificación Completa Cava System)
 # =====================================================================
-with tab_acciones:
-    st.subheader("🔍 Escáner Inteligente Automático (Watchlist)")
-    st.markdown("Selecciona tus activos. Si dejas los niveles en `0.0`, el robot calculará los soportes de forma 100% automática.")
+with tab_screener:
+    st.subheader("🔍 Filtro Tecnológico Avanzado")
+    st.markdown("El robot analiza la tendencia de largo plazo, calcula la geometría de Fibonacci e identifica la huella institucional.")
 
-    opciones_seleccionadas = st.multiselect(
-        "Modificar tu lista de vigilancia activa:",
+    watchlist = st.multiselect(
+        "Añadir o modificar acciones en la mesa de control:",
         options=universo_tickers,
-        default=["AAPL", "NVDA", "GOOGL", "META"]
+        default=["AAPL", "NVDA", "GOOGL", "META", "MSFT", "AMZN", "DDOG", "DELL"]
     )
-    
-    ticker_extra = st.text_input("¿Añadir ticker manual (Ej: DELL, DDOG, PLTR)?:").upper()
-    if ticker_extra and ticker_extra not in opciones_seleccionadas:
-        opciones_seleccionadas.append(ticker_extra)
 
-    if opciones_seleccionadas:
-        st.markdown("### 📝 Configuración de Umbrales")
-        st.info("🤖 **Modo Auto Activo:** Deja los valores en `0.0` para usar el mínimo de 20 días como soporte estructural y el mínimo de ayer como Stop.")
-        
-        for ticker in opciones_seleccionadas:
-            if ticker not in st.session_state.valores_tickers:
-                st.session_state.valores_tickers[ticker] = {"Soporte Manual": 0.0, "Stop Manual": 0.0}
-        
-        filas = []
-        for ticker in opciones_seleccionadas:
-            filas.append({
-                "Ticker": ticker,
-                "Soporte Manual (Opcional)": st.session_state.valores_tickers[ticker]["Soporte Manual"],
-                "Stop Manual (Opcional)": st.session_state.valores_tickers[ticker]["Stop Manual"]
-            })
-        df_niveles = pd.DataFrame(filas)
-        
-        tabla_editada = st.data_editor(df_niveles, hide_index=True, use_container_width=True)
-
-        for index, row in tabla_editada.iterrows():
-            st.session_state.valores_tickers[row["Ticker"]] = {
-                "Soporte Manual": float(row["Soporte Manual (Opcional)"]),
-                "Stop Manual": float(row["Stop Manual (Opcional)"])
-            }
-
-        if st.button("🚀 Lanzar Escáner Estructural Autónomo"):
-            st.markdown("---")
-            st.markdown("### 🔔 Diagnóstico y Señales del Sistema")
+    if st.button("🚀 Iniciar Escaneo Cuantitativo Autónomo"):
+        if not watchlist:
+            st.warning("Selecciona al menos una acción para comenzar el rastreo.")
+        else:
+            resultados = []
             
-            for index, row in tabla_editada.iterrows():
-                ticker = row["Ticker"]
-                soporte_man = row["Soporte Manual (Opcional)"]
-                stop_man = row["Stop Manual (Opcional)"]
+            for ticker in watchlist:
+                asset = yf.Ticker(ticker)
+                # Descargamos 6 meses de historial diario para tener datos suficientes para indicadores estables
+                df = asset.history(period="6mo", interval="1d")
                 
-                t_data = yf.Ticker(ticker)
-                h_hoy = t_data.history(period="1d", interval="1m")
-                h_hist = t_data.history(period="22d", interval="1d")
-                
-                if h_hoy.empty or h_hist.empty:
-                    st.error(f"Error al conectar con los datos de {ticker}.")
+                if len(df) < 55:
                     continue
-                    
-                precio_accion = float(h_hoy['Close'].iloc[-1])
-                vol_accion = int(h_hoy['Volume'].sum())
-                vol_medio_20_accion = int(h_hist['Volume'].iloc[-21:-1].mean())
                 
-                # ─── LÓGICA DE DETECCIÓN ESTRUCTURAL AUTOMÁTICA ───
-                minimo_20_sesiones = float(h_hist['Low'].iloc[-21:-1].min())
-                minimo_ayer = float(h_hist['Low'].iloc[-2])
+                # ─── 📊 INDICADORES MATEMÁTICOS DEL MANUAL DE CAVA ───
+                # 1. Trend Filter: EMA de 55 periodos
+                df['EMA55'] = df['Close'].ewm(span=55, adjust=False).mean()
                 
-                # Si el usuario dejó 0.0, el robot toma el control numérico
-                soporte_final = soporte_man if soporte_man > 0.0 else minimo_20_sesiones
-                stop_final = stop_man if stop_man > 0.0 else minimo_ayer
-                tipo_calculo = "Manual" if soporte_man > 0.0 else "Auto (Mínimo 30 días)"
+                # 2. Momento: MACD Estándar (12, 26, 9)
+                fast_ema = df['Close'].ewm(span=12, adjust=False).mean()
+                slow_ema = df['Close'].ewm(span=26, adjust=False).mean()
+                df['MACD_Line'] = fast_ema - slow_ema
+                df['MACD_Signal'] = df['MACD_Line'].ewm(span=9, adjust=False).mean()
                 
-                # CÁLCULO DE MÉTRICAS DEL ALGORITMO
-                volumen_institucional = vol_accion > (1.5 * vol_medio_20_accion)
-                desviacion = (precio_accion - soporte_final) / soporte_final
-                holgura_correcta = 0.0 < desviacion <= 0.02
+                # 3. Fuerza: RSI Nativo de 14 periodos
+                delta = df['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
+                loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
+                df['RSI'] = 100 - (100 / (1 + (gain / loss)))
                 
-                # Tarjeta 1: DISPARO ACTIVO
-                if volumen_institucional and holgura_correcta and precio_accion > soporte_final:
+                # 4. Giros Rápidos: Estocástico (%K=14, %D=3)
+                df['Stoch_K'] = 100 * ((df['Close'] - df['Low'].rolling(14).min()) / (df['High'].rolling(14).max() - df['Low'].rolling(14).min()))
+                df['Stoch_D'] = df['Stoch_K'].rolling(3).mean()
+                
+                # ─── 📐 GEOMETRÍA AUTOMÁTICA DE FIBONACCI ───
+                # Buscamos el mínimo y máximo estructural del último trimestre (60 sesiones)
+                df_trimestre = df.iloc[-60:]
+                swing_low = df_trimestre['Low'].min()
+                swing_high = df_trimestre['High'].max()
+                rango = swing_high - swing_low
+                
+                # Niveles exactos de soporte del libro
+                fib_382 = swing_high - (0.382 * rango)
+                fib_500 = swing_high - (0.500 * rango)
+                fib_618 = swing_high - (0.618 * rango)
+                
+                # Determinamos cuál es el soporte más cercano por debajo del precio actual
+                precio_actual = float(df['Close'].iloc[-1])
+                soportes_posibles = [fib_382, fib_500, fib_618, swing_low]
+                soportes_validos = [s for soportes_posibles in soportes_posibles if soportes_posibles < precio_actual]
+                soporte_cava = max(soportes_validos) if soportes_validos else fib_618
+                
+                # ─── 🔎 SUELO DE DRUMMOND (Mínimo Aislado) ───
+                # Verificamos si en las últimas 4 velas cerradas ha habido un mínimo aislado de Drummond
+                mínimo_aislado_detectado = False
+                for i in range(-5, -1):
+                    if df['Low'].iloc[i] < df['Low'].iloc[i-1] and df['Low'].iloc[i] < df['Low'].iloc[i+1]:
+                        mínimo_aislado_detectado = True
+                        break
+                
+                # ─── ⚡ REGLAS CRÍTICAS DEL FILTRO DE ENTRADA ───
+                hoy = df.iloc[-1]
+                ayer = df.iloc[-2]
+                
+                en_tendencia_madre = hoy['Close'] > hoy['EMA55']
+                volumen_institucional = hoy['Volume'] > (1.5 * df['Volume'].iloc[-21:-1].mean())
+                
+                cruce_alcista_macd = (ayer['MACD_Line'] <= ayer['MACD_Signal']) and (hoy['MACD_Line'] > hoy['MACD_Signal'])
+                cruce_alcista_stoch = (ayer['Stoch_K'] <= ayer['Stoch_D']) and (hoy['Stoch_K'] > hoy['Stoch_D'])
+                rsi_zona_caza = hoy['RSI'] <= 45
+                
+                desviacion_soporte = (precio_actual - soporte_cava) / soporte_cava
+                cerca_del_soporte = 0.0 <= desviacion_soporte <= 0.025 # Máximo 2.5% de distancia del suelo
+                
+                # Clasificación mecánica de estados
+                if en_tendencia_madre and cerca_del_soporte and volumen_institucional and (cruce_alcista_macd or cruce_alcista_stoch or mínimo_aislado_detectado):
+                    estado = "🚀 COMPRA (Gatillo Activo)"
+                elif en_tendencia_madre and (rsi_zona_caza or cerca_del_soporte):
+                    estado = "👀 RADAR (Esperando Volumen)"
+                elif not en_tendencia_madre:
+                    estado = "📉 EVITAR (Estructura Bajista)"
+                else:
+                    estado = "⚪ NEUTRO (Esperar Retroceso)"
+                
+                resultados.append({
+                    "Activo": ticker,
+                    "Precio ($)": round(precio_actual, 2),
+                    "EMA 55 ($)": round(hoy['EMA55'], 2),
+                    "Soporte Fibonacci ($)": round(soporte_cava, 2),
+                    "Distancia Suelo": f"{desviacion_soporte*100:.1f}%",
+                    "RSI (14)": round(hoy['RSI'], 1),
+                    "Drummond": "🟢 SÍ" if mínimo_aislado_detectado else "⚪ No",
+                    "Vol. Inst.": "🔥 ALTO" if volumen_institucional else "Normal",
+                    "Dictamen Técnico": estado
+                })
+            
+            df_final = pd.DataFrame(resultados)
+            
+            # Imprimir alertas críticas de compra arriba del todo
+            alertas = df_final[df_final['Dictamen Técnico'].str.contains('🚀')]
+            if not alertas.empty:
+                for _, row in alertas.iterrows():
                     st.markdown(f"""
                         <div class="alert-trigger">
-                            <span style="font-size:16px; font-weight:bold; color:#2ecc71;">🚀 DISPARO DE ENTRADA EN {ticker} ({tipo_calculo})</span><br>
-                            Cotización en zona óptima: <b>{precio_accion:.2f}</b> (Soporte en {soporte_final:.2f}). <br>
-                            🔥 <b>Manos Fuertes:</b> {vol_accion:,} vs Media: {vol_medio_20_accion:,}.<br>
-                            🛑 <b>Stop-Loss Inamovible:</b> {stop_final - 0.1:.2f}
+                            🔥 <b>¡TRIGGER DE COMPRA EN {row['Activo']}!</b><br>
+                            El precio está apoyado en su soporte Fibonacci de <b>{row['Soporte Fibonacci ($)']}</b> (a solo {row['Distancia Suelo']} de distancia). <br>
+                            Confirmación de Manos Fuertes: <b>Volumen Institucional Activo</b> y filtro de Drummond validado. El Stop-Loss va debajo del mínimo de la corrección.
                         </div>
                     """, unsafe_allow_html=True)
-                
-                # Tarjeta 2: EN RADAR TÁCTICO
-                elif precio_accion > soporte_final and desviacion <= 0.04:
+            
+            # Imprimir radares intermedios
+            radares = df_final[df_final['Dictamen Técnico'].str.contains('👀')]
+            if not radares.empty:
+                for _, row in radares.iterrows():
                     st.markdown(f"""
                         <div class="alert-radar">
-                            <span style="font-size:14px; font-weight:bold; color:#f1c40f;">👀 {ticker} EN RADAR ({tipo_calculo})</span><br>
-                            Estructura favorable. Precio: <b>{precio_accion:.2f}</b> | Zona crítica: {soporte_final:.2f}. Esperando ataque de volumen comprador.
+                            👀 <b>{row['Activo']} EN RADAR ESTRUCTURAL:</b> Precio en zona de descuento favorable ($ {row['Precio ($)']}). La estructura técnica limpia está lista; esperando el fogonazo de volumen comprador para ejecutar.
                         </div>
                     """, unsafe_allow_html=True)
-                else:
-                    st.write(f"⚪ {ticker} ({tipo_calculo}): Fuera de rango. Precio: {precio_accion:.2f} | Nivel Clave: {soporte_final:.2f}")
-    else:
-        st.write("La lista de vigilancia está vacía. Añade tus acciones favoritas arriba.")
+            
+            st.markdown("### 📋 Cuadrícula de Control de la Watchlist")
+            st.dataframe(df_final.sort_values(by="Dictamen Técnico", ascending=False), use_container_width=True, hide_index=True)
