@@ -10,7 +10,7 @@ st.set_page_config(page_title="Cava Algorithmic Core", layout="wide", initial_si
 # CSS Minimalista Premium
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght=300;400;600&display=swap');
         html, body, [data-testid="stAppViewContainer"] { font-family: 'Inter', sans-serif; background-color: #0d0e12; color: #ffffff; }
         .metric-card { background: #141722; border: 1px solid #1f232d; padding: 20px; border-radius: 12px; text-align: left; }
         .metric-title { color: #7f8c8d; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
@@ -33,7 +33,7 @@ def cargar_universo_acciones():
 
 universo_tickers = cargar_universo_acciones()
 
-# Pestañas nativas de la aplicación
+# Pestañas nativas exactas de la aplicación
 tab_indice, tab_screener = st.tabs(["📊 Monitor Índice S&P 500", "🚦 Screener Autónomo Cava System"])
 
 # =====================================================================
@@ -97,7 +97,6 @@ with tab_screener:
             
             for ticker in watchlist:
                 asset = yf.Ticker(ticker)
-                # Descargamos 6 meses de historial diario para tener datos suficientes para indicadores estables
                 df = asset.history(period="6mo", interval="1d")
                 
                 if len(df) < 55:
@@ -117,6 +116,9 @@ with tab_screener:
                 delta = df['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
                 loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
+                
+                # Evitar división por cero si no hay pérdidas en el histórico
+                loss = loss.replace(0, 0.00001)
                 df['RSI'] = 100 - (100 / (1 + (gain / loss)))
                 
                 # 4. Giros Rápidos: Estocástico (%K=14, %D=3)
@@ -124,25 +126,23 @@ with tab_screener:
                 df['Stoch_D'] = df['Stoch_K'].rolling(3).mean()
                 
                 # ─── 📐 GEOMETRÍA AUTOMÁTICA DE FIBONACCI ───
-                # Buscamos el mínimo y máximo estructural del último trimestre (60 sesiones)
                 df_trimestre = df.iloc[-60:]
                 swing_low = df_trimestre['Low'].min()
                 swing_high = df_trimestre['High'].max()
                 rango = swing_high - swing_low
                 
-                # Niveles exactos de soporte del libro
                 fib_382 = swing_high - (0.382 * rango)
                 fib_500 = swing_high - (0.500 * rango)
                 fib_618 = swing_high - (0.618 * rango)
                 
-                # Determinamos cuál es el soporte más cercano por debajo del precio actual
                 precio_actual = float(df['Close'].iloc[-1])
                 soportes_posibles = [fib_382, fib_500, fib_618, swing_low]
-                soportes_validos = [s for soportes_posibles in soportes_posibles if soportes_posibles < precio_actual]
+                
+                # CORRECCIÓN DE SINTAXIS AQUÍ: Filtrado limpio de soportes por debajo del precio
+                soportes_validos = [s for s in soportes_posibles if s < precio_actual]
                 soporte_cava = max(soportes_validos) if soportes_validos else fib_618
                 
                 # ─── 🔎 SUELO DE DRUMMOND (Mínimo Aislado) ───
-                # Verificamos si en las últimas 4 velas cerradas ha habido un mínimo aislado de Drummond
                 mínimo_aislado_detectado = False
                 for i in range(-5, -1):
                     if df['Low'].iloc[i] < df['Low'].iloc[i-1] and df['Low'].iloc[i] < df['Low'].iloc[i+1]:
@@ -161,9 +161,8 @@ with tab_screener:
                 rsi_zona_caza = hoy['RSI'] <= 45
                 
                 desviacion_soporte = (precio_actual - soporte_cava) / soporte_cava
-                cerca_del_soporte = 0.0 <= desviacion_soporte <= 0.025 # Máximo 2.5% de distancia del suelo
+                cerca_del_soporte = 0.0 <= desviacion_soporte <= 0.025
                 
-                # Clasificación mecánica de estados
                 if en_tendencia_madre and cerca_del_soporte and volumen_institucional and (cruce_alcista_macd or cruce_alcista_stoch or mínimo_aislado_detectado):
                     estado = "🚀 COMPRA (Gatillo Activo)"
                 elif en_tendencia_madre and (rsi_zona_caza or cerca_del_soporte):
