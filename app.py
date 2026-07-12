@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
 
 # Configuración de alta gama para la plataforma visual
 st.set_page_config(page_title="Cava Algorithmic Core", layout="wide", initial_sidebar_state="expanded")
@@ -33,7 +32,7 @@ def cargar_universo_acciones():
 
 universo_tickers = cargar_universo_acciones()
 
-# Pestañas nativas exactas de la aplicación
+# Pestañas nativas de la aplicación
 tab_indice, tab_screener = st.tabs(["📊 Monitor Índice S&P 500", "🚦 Screener Autónomo Cava System"])
 
 # =====================================================================
@@ -49,20 +48,28 @@ with tab_indice:
     st.subheader("Análisis Microestructural del S&P 500")
     
     spx = yf.Ticker("^SPX")
-    df_hoy = spx.history(period="1d", interval="1m")
-    df_hist = spx.history(period="22d", interval="1d")
+    df_hist = spx.history(period="30d", interval="1d")
     
-    if not df_hoy.empty:
-        spot = float(df_hoy['Close'].iloc[-1])
-        volumen = int(df_hoy['Volume'].sum())
-        vol_media_20 = int(df_hist['Volume'].iloc[-21:-1].mean())
+    if not df_hist.empty:
+        # Contingencia para el fin de semana
+        df_hoy = spx.history(period="1d", interval="1m")
+        if df_hoy.empty:
+            spot = float(df_hist['Close'].iloc[-1])
+            volumen = int(df_hist['Volume'].iloc[-1])
+            vol_media_20 = int(df_hist['Volume'].iloc[-22:-2].mean())
+            estado_mercado = "⚠️ MERCADO CERRADO (Último Cierre Oficial)"
+        else:
+            spot = float(df_hoy['Close'].iloc[-1])
+            volumen = int(df_hoy['Volume'].sum())
+            vol_media_20 = int(df_hist['Volume'].iloc[-21:-1].mean())
+            estado_mercado = "⚡ MERCADO EN VIVO"
         
         if spot > zero_gamma:
-            color, status, msg = "#2ecc71", "🟢 POSICIÓN COMPLETA (Régimen de Gamma Positiva)", "Dealers amortiguan la volatilidad. Buscar compras con confianza."
+            color, status, msg = "#2ecc71", f"🟢 POSICIÓN COMPLETA ({estado_mercado})", "Régimen de Gamma Positiva real. Dealers amortiguan volatilidad."
         elif spot > put_wall:
-            color, status, msg = "#f1c40f", "🟡 POSICIÓN MODERADA (Régimen de Gamma Negativa)", "La volatilidad está activa. Reducir el tamaño de las posiciones a la mitad."
+            color, status, msg = "#f1c40f", f"🟡 POSICIÓN MODERADA ({estado_mercado})", "Gamma Negativa activa. La volatilidad está presente en el precio."
         else:
-            color, status, msg = "#e74c3c", "🔴 RIESGO EXTREMO (Por debajo del Put Wall)", "Pánico en el mercado. Evitar cualquier tipo de compra. Liquidez."
+            color, status, msg = "#e74c3c", f"🔴 RIESGO EXTREMO ({estado_mercado})", "Precio por debajo del Put Wall. Evitar compras. Mantener liquidez."
 
         st.markdown(f"""
             <div style="background: #141722; border-left: 4px solid {color}; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
@@ -72,9 +79,11 @@ with tab_indice:
         """, unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns(3)
-        col1.markdown(f'<div class="metric-card"><div class="metric-title">S&P 500 Real</div><div class="metric-value">{spot:.2f}</div></div>', unsafe_allow_html=True)
+        col1.markdown(f'<div class="metric-card"><div class="metric-title">S&P 500</div><div class="metric-value">{spot:.2f}</div></div>', unsafe_allow_html=True)
         col2.markdown(f'<div class="metric-card"><div class="metric-title">Put Wall</div><div class="metric-value" style="color:#e74c3c;">{put_wall:.2f}</div></div>', unsafe_allow_html=True)
         col3.markdown(f'<div class="metric-card"><div class="metric-title">Call Wall</div><div class="metric-value" style="color:#2ecc71;">{call_wall:.2f}</div></div>', unsafe_allow_html=True)
+    else:
+        st.error("No se han podido descargar datos históricos desde Yahoo Finance.")
 
 # =====================================================================
 # PESTAÑA 2: SCREENER AUTÓNOMO (Unificación Completa Cava System)
@@ -103,32 +112,26 @@ with tab_screener:
                     continue
                 
                 # ─── 📊 INDICADORES MATEMÁTICOS DEL MANUAL DE CAVA ───
-                # 1. Trend Filter: EMA de 55 periodos
                 df['EMA55'] = df['Close'].ewm(span=55, adjust=False).mean()
                 
-                # 2. Momento: MACD Estándar (12, 26, 9)
                 fast_ema = df['Close'].ewm(span=12, adjust=False).mean()
                 slow_ema = df['Close'].ewm(span=26, adjust=False).mean()
                 df['MACD_Line'] = fast_ema - slow_ema
                 df['MACD_Signal'] = df['MACD_Line'].ewm(span=9, adjust=False).mean()
                 
-                # 3. Fuerza: RSI Nativo de 14 periodos
                 delta = df['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
                 loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
-                
-                # Evitar división por cero si no hay pérdidas en el histórico
-                loss = loss.replace(0, 0.00001)
+                loss = loss.replace(0, 0.00001)  # Parche matemático anti división por cero
                 df['RSI'] = 100 - (100 / (1 + (gain / loss)))
                 
-                # 4. Giros Rápidos: Estocástico (%K=14, %D=3)
                 df['Stoch_K'] = 100 * ((df['Close'] - df['Low'].rolling(14).min()) / (df['High'].rolling(14).max() - df['Low'].rolling(14).min()))
                 df['Stoch_D'] = df['Stoch_K'].rolling(3).mean()
                 
                 # ─── 📐 GEOMETRÍA AUTOMÁTICA DE FIBONACCI ───
                 df_trimestre = df.iloc[-60:]
-                swing_low = df_trimestre['Low'].min()
-                swing_high = df_trimestre['High'].max()
+                swing_low = float(df_trimestre['Low'].min())
+                swing_high = float(df_trimestre['High'].max())
                 rango = swing_high - swing_low
                 
                 fib_382 = swing_high - (0.382 * rango)
@@ -137,8 +140,6 @@ with tab_screener:
                 
                 precio_actual = float(df['Close'].iloc[-1])
                 soportes_posibles = [fib_382, fib_500, fib_618, swing_low]
-                
-                # CORRECCIÓN DE SINTAXIS AQUÍ: Filtrado limpio de soportes por debajo del precio
                 soportes_validos = [s for s in soportes_posibles if s < precio_actual]
                 soporte_cava = max(soportes_validos) if soportes_validos else fib_618
                 
@@ -153,15 +154,15 @@ with tab_screener:
                 hoy = df.iloc[-1]
                 ayer = df.iloc[-2]
                 
-                en_tendencia_madre = hoy['Close'] > hoy['EMA55']
-                volumen_institucional = hoy['Volume'] > (1.5 * df['Volume'].iloc[-21:-1].mean())
+                en_tendencia_madre = bool(hoy['Close'] > hoy['EMA55'])
+                volumen_institucional = bool(hoy['Volume'] > (1.5 * df['Volume'].iloc[-21:-1].mean()))
                 
-                cruce_alcista_macd = (ayer['MACD_Line'] <= ayer['MACD_Signal']) and (hoy['MACD_Line'] > hoy['MACD_Signal'])
-                cruce_alcista_stoch = (ayer['Stoch_K'] <= ayer['Stoch_D']) and (hoy['Stoch_K'] > hoy['Stoch_D'])
-                rsi_zona_caza = hoy['RSI'] <= 45
+                cruce_alcista_macd = bool((ayer['MACD_Line'] <= ayer['MACD_Signal']) and (hoy['MACD_Line'] > hoy['MACD_Signal']))
+                cruce_alcista_stoch = bool((ayer['Stoch_K'] <= ayer['Stoch_D']) and (hoy['Stoch_K'] > hoy['Stoch_D']))
+                rsi_zona_caza = bool(hoy['RSI'] <= 45)
                 
-                desviacion_soporte = (precio_actual - soporte_cava) / soporte_cava
-                cerca_del_soporte = 0.0 <= desviacion_soporte <= 0.025
+                desviacion_soporte = float((precio_actual - soporte_cava) / soporte_cava)
+                cerca_del_soporte = bool(0.0 <= desviacion_soporte <= 0.025)
                 
                 if en_tendencia_madre and cerca_del_soporte and volumen_institucional and (cruce_alcista_macd or cruce_alcista_stoch or mínimo_aislado_detectado):
                     estado = "🚀 COMPRA (Gatillo Activo)"
